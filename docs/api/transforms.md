@@ -1,4 +1,4 @@
-# Transforms
+# Transforms API
 
 Transforms are helper functions operating on the document. They can be used in defining your own commands.
 
@@ -11,16 +11,24 @@ Transforms are helper functions operating on the document. They can be used in d
 
 ## Node options
 
-All transforms support a parameter `options`. This includes options specific to the transform, and general `NodeOptions` to specify the place in the document that the transform is applied to.
+All transforms support a parameter `options`. This includes options specific to the transform, and general `NodeOptions` to specify which Nodes in the document that the transform is applied to.
 
 ```typescript
 interface NodeOptions {
   at?: Location
-  match?: (node: Node) => boolean
+  match?: (node: Node, path: Location) => boolean
   mode?: 'highest' | 'lowest'
   voids?: boolean
 }
 ```
+
+- The `at` option selects a [Location](../concepts/03-locations.md) in the editor. It defaults to the user's current selection. [Learn more about the `at` option](../concepts/04-transforms.md#the-at-option)
+
+- The `match` option filters the set of Nodes with a custom function. [Learn more about the `match` option](../concepts/04-transforms.md#the-match-option)
+
+- The `mode` option also filters the set of nodes.
+
+- When `voids` is false, [void Elements](./nodes/editor#schema-specific-instance-methods-to-override) are filtered out.
 
 ## Static methods
 
@@ -36,9 +44,19 @@ Options: `{at?: Location, hanging?: boolean, voids?: boolean}`
 
 #### `Transforms.insertNodes(editor: Editor, nodes: Node | Node[], options?)`
 
-Insert `nodes` at the specified location in the document. If no location is specified, insert at the current selection. If there is no selection, insert at the end of the document.
+Atomically inserts `nodes` at the specified location in the document. If no location is specified, inserts at the current selection. If there is no selection, inserts at the end of the document.
 
 Options supported: `NodeOptions & {hanging?: boolean, select?: boolean}`.
+
+For example, to insert at the very end, without replacing the current selection and regardless of block nesting, use
+
+```javascript
+Transforms.insertNodes(
+  editor,
+  { type: targetType, children: [{ text: '' }] },
+  { at: [editor.children.length] }
+)
+```
 
 #### `Transforms.removeNodes(editor: Editor, options?)`
 
@@ -62,7 +80,10 @@ Options supported: `NodeOptions & {height?: number, always?: boolean}`
 
 Wrap nodes at the specified location in the `element` container. If no location is specified, wrap the selection.
 
-Options supported: `NodeOptions & {split?: boolean}`. For `options.mode`, `'all'` is also supported.
+Options supported: `NodeOptions & {split?: boolean}`.
+
+- `options.mode`: `'all'` is also supported.
+- `options.split` indicates that it's okay to split a node in order to wrap the location. For example, if `ipsum` was selected in a `Text` node with `lorem ipsum dolar`, `split: true` would wrap the word `ipsum` only, resulting in splitting the `Text` node. If `split: false`, the entire `Text` node `lorem ipsum dolar` would be wrapped.
 
 #### `Transforms.unwrapNodes(editor: Editor, options?)`
 
@@ -106,7 +127,16 @@ Options: `{edge?: 'anchor' | 'focus' | 'start' | 'end'}`
 
 #### `Transforms.select(editor: Editor, target: Location)`
 
-Set the selection to a new value specified by `target`.
+Set the selection to a new value specified by `target`. When a selection already exists, this method is just a proxy for `setSelection` and will update the existing value.
+
+For example, to set the selection to the entire contents of the editor:
+
+```javascript
+Transforms.select(editor, {
+  anchor: Editor.start(editor, []),
+  focus: Editor.end(editor, []),
+})
+```
 
 #### `Transforms.deselect(editor: Editor)`
 
@@ -126,7 +156,7 @@ Options: `{edge?: 'anchor' | 'focus' | 'start' | 'end'}`
 
 #### `Transforms.setSelection(editor: Editor, props: Partial<Range>)`
 
-Set new properties on the selection.
+Set new properties on an active selection. Since the value is a `Partial<Range>`, this method can only handle updates to an existing selection. If there is no active selection the operation will be void. Use `select` if you'd like to create a selection when there is none.
 
 ### Text transforms
 

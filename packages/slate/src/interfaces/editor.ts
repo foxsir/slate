@@ -1,5 +1,4 @@
-import isPlainObject from 'is-plain-object'
-import { reverse as reverseText } from 'esrever'
+import { isPlainObject } from 'is-plain-object'
 
 import {
   Ancestor,
@@ -16,15 +15,21 @@ import {
   RangeRef,
   Span,
   Text,
+  Transforms,
 } from '..'
 import {
   DIRTY_PATHS,
+  DIRTY_PATH_KEYS,
   NORMALIZING,
   PATH_REFS,
   POINT_REFS,
   RANGE_REFS,
 } from '../utils/weak-maps'
-import { getWordDistance, getCharacterDistance } from '../utils/string'
+import {
+  getWordDistance,
+  getCharacterDistance,
+  splitByCharacterDistance,
+} from '../utils/string'
 import { Descendant } from './node'
 import { Element } from './element'
 
@@ -253,6 +258,7 @@ export interface EditorInterface {
   ) => RangeRef
   rangeRefs: (editor: Editor) => Set<RangeRef>
   removeMark: (editor: Editor, key: string) => void
+  setNormalizing: (editor: Editor, isNormalizing: boolean) => void
   start: (editor: Editor, at: Location) => Point
   string: (
     editor: Editor,
@@ -974,13 +980,26 @@ export const Editor: EditorInterface = {
       return DIRTY_PATHS.get(editor) || []
     }
 
+    const getDirtyPathKeys = (editor: Editor) => {
+      return DIRTY_PATH_KEYS.get(editor) || new Set()
+    }
+
+    const popDirtyPath = (editor: Editor): Path => {
+      const path = getDirtyPaths(editor).pop()!
+      const key = path.join(',')
+      getDirtyPathKeys(editor).delete(key)
+      return path
+    }
+
     if (!Editor.isNormalizing(editor)) {
       return
     }
 
     if (force) {
       const allPaths = Array.from(Node.nodes(editor), ([, p]) => p)
+      const allPathKeys = new Set(allPaths.map(p => p.join(',')))
       DIRTY_PATHS.set(editor, allPaths)
+      DIRTY_PATH_KEYS.set(editor, allPathKeys)
     }
 
     if (getDirtyPaths(editor).length === 0) {
@@ -988,6 +1007,29 @@ export const Editor: EditorInterface = {
     }
 
     Editor.withoutNormalizing(editor, () => {
+      /*
+        Fix dirty elements with no children.
+        editor.normalizeNode() does fix this, but some normalization fixes also require it to work.
+        Running an initial pass avoids the catch-22 race condition.
+      */
+      for (const dirtyPath of getDirtyPaths(editor)) {
+        if (Node.has(editor, dirtyPath)) {
+          const entry = Editor.node(editor, dirtyPath)
+          const [node, _] = entry
+
+          /*
+            The default normalizer inserts an empty text node in this scenario, but it can be customised.
+            So there is some risk here.
+
+            As long as the normalizer only inserts child nodes for this case it is safe to do in any order;
+            by definition adding children to an empty node can't cause other paths to change.
+          */
+          if (Element.isElement(node) && node.children.length === 0) {
+            editor.normalizeNode(entry)
+          }
+        }
+      }
+
       const max = getDirtyPaths(editor).length * 42 // HACK: better way?
       let m = 0
 
@@ -998,7 +1040,7 @@ export const Editor: EditorInterface = {
           `)
         }
 
-        const dirtyPath = getDirtyPaths(editor).pop()!
+        const dirtyPath = popDirtyPath(editor)
 
         // If the node doesn't exist in the tree, it does not need to be normalized.
         if (Node.has(editor, dirtyPath)) {
@@ -1315,7 +1357,6 @@ export const Editor: EditorInterface = {
             : Editor.start(editor, path)
 
           blockText = Editor.string(editor, { anchor: s, focus: e }, { voids })
-          blockText = reverse ? reverseText(blockText) : blockText
           isNewBlock = true
         }
       }
@@ -1356,8 +1397,14 @@ export const Editor: EditorInterface = {
           // otherwise advance blockText forward by the new `distance`.
           if (distance === 0) {
             if (blockText === '') break
-            distance = calcDistance(blockText, unit)
-            blockText = blockText.slice(distance)
+            distance = calcDistance(blockText, unit, reverse)
+            // Split the string at the previously found distance and use the
+            // remaining string for the next iteration.
+            blockText = splitByCharacterDistance(
+              blockText,
+              distance,
+              reverse
+            )[1]
           }
 
           // Advance `leafText` by the current `distance`.
@@ -1388,11 +1435,11 @@ export const Editor: EditorInterface = {
 
     // Helper:
     // Return the distance in offsets for a step of size `unit` on given string.
-    function calcDistance(text: string, unit: string) {
+    function calcDistance(text: string, unit: string, reverse?: boolean) {
       if (unit === 'character') {
-        return getCharacterDistance(text)
+        return getCharacterDistance(text, reverse)
       } else if (unit === 'word') {
-        return getWordDistance(text)
+        return getWordDistance(text, reverse)
       } else if (unit === 'line' || unit === 'block') {
         return text.length
       }
@@ -1528,6 +1575,16 @@ export const Editor: EditorInterface = {
   },
 
   /**
+   * Manually set if the editor should currently be normalizing.
+   *
+   * Note: Using this incorrectly can leave the editor in an invalid state.
+   *
+   */
+  setNormalizing(editor: Editor, isNormalizing: boolean): void {
+    NORMALIZING.set(editor, isNormalizing)
+  },
+
+  /**
    * Get the start point of a location.
    */
 
@@ -1599,7 +1656,7 @@ export const Editor: EditorInterface = {
       match: n => Editor.isBlock(editor, n),
     })
     const blockPath = endBlock ? endBlock[1] : []
-    const first = Editor.start(editor, [])
+    const first = Editor.start(editor, start)
     const before = { anchor: first, focus: end }
     let skip = true
 
@@ -1647,9 +1704,12 @@ export const Editor: EditorInterface = {
 
   withoutNormalizing(editor: Editor, fn: () => void): void {
     const value = Editor.isNormalizing(editor)
-    NORMALIZING.set(editor, false)
-    fn()
-    NORMALIZING.set(editor, value)
+    Editor.setNormalizing(editor, false)
+    try {
+      fn()
+    } finally {
+      Editor.setNormalizing(editor, value)
+    }
     Editor.normalize(editor)
   },
 }

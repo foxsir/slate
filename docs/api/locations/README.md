@@ -1,4 +1,4 @@
-# Location Types
+# Location Types APIs
 
 The `Location` interface is a union of the ways to refer to a specific location in a Slate document: paths, points or ranges. Methods will often accept a `Location` instead of requiring only a `Path`, `Point` or `Range`.
 
@@ -8,5 +8,8 @@ type Location = Path | Point | Range
 
 - [Location](./location.md)
 - [Path](./path.md)
+- [PathRef](./path-ref.md)
 - [Point](./point.md)
+- [PointEntry](./pointe-entry.md)
 - [Range](./range.md)
+- [Span](./span.md)

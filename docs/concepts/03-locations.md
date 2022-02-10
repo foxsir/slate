@@ -29,6 +29,9 @@ const editor = {
 
 The leaf text node would have a path of: `[0, 0]`.
 
+The Editor itself has a path of `[]`. For example, to select the whole contents of the editor, call
+`Transforms.select(editor, [])`
+
 ## `Point`
 
 Points are slightly more specific than paths, and contain an `offset` into a specific text node. Their interface is:
@@ -83,7 +86,7 @@ Here's how Mozilla Developer Network explains it:
 
 One important distinction is that the anchor and focus points of ranges **always reference the leaf-level text nodes** in a document and never reference elements. This behavior is different than the DOM, but it simplifies working with ranges as there are fewer edge cases for you to handle.
 
-> 🤖 For more info, check out the [`Range` reference](../api/locations/range.md).
+> 🤖 For more info, check out the [Range API reference](../api/locations/range.md).
 
 ## Selection
 

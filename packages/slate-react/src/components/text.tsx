@@ -3,14 +3,16 @@ import { Range, Element, Text as SlateText } from 'slate'
 
 import Leaf from './leaf'
 import { ReactEditor, useSlateStatic } from '..'
-import { RenderLeafProps } from './editable'
+import { RenderLeafProps, RenderPlaceholderProps } from './editable'
 import { useIsomorphicLayoutEffect } from '../hooks/use-isomorphic-layout-effect'
 import {
-  KEY_TO_ELEMENT,
   NODE_TO_ELEMENT,
   ELEMENT_TO_NODE,
+  EDITOR_TO_KEY_TO_ELEMENT,
 } from '../utils/weak-maps'
 import { isDecoratorRangeListEqual } from '../utils/range-list'
+import { useContentKey } from '../hooks/use-content-key'
+import { IS_ANDROID } from '../utils/environment'
 
 /**
  * Text.
@@ -20,10 +22,18 @@ const Text = (props: {
   decorations: Range[]
   isLast: boolean
   parent: Element
+  renderPlaceholder: (props: RenderPlaceholderProps) => JSX.Element
   renderLeaf?: (props: RenderLeafProps) => JSX.Element
   text: SlateText
 }) => {
-  const { decorations, isLast, parent, renderLeaf, text } = props
+  const {
+    decorations,
+    isLast,
+    parent,
+    renderPlaceholder,
+    renderLeaf,
+    text,
+  } = props
   const editor = useSlateStatic()
   const ref = useRef<HTMLSpanElement>(null)
   const leaves = SlateText.decorations(text, decorations)
@@ -37,6 +47,7 @@ const Text = (props: {
       <Leaf
         isLast={isLast && i === leaves.length - 1}
         key={`${key.id}-${i}`}
+        renderPlaceholder={renderPlaceholder}
         leaf={leaf}
         text={text}
         parent={parent}
@@ -47,18 +58,21 @@ const Text = (props: {
 
   // Update element-related weak maps with the DOM element ref.
   useIsomorphicLayoutEffect(() => {
+    const KEY_TO_ELEMENT = EDITOR_TO_KEY_TO_ELEMENT.get(editor)
     if (ref.current) {
-      KEY_TO_ELEMENT.set(key, ref.current)
+      KEY_TO_ELEMENT?.set(key, ref.current)
       NODE_TO_ELEMENT.set(text, ref.current)
       ELEMENT_TO_NODE.set(ref.current, text)
     } else {
-      KEY_TO_ELEMENT.delete(key)
+      KEY_TO_ELEMENT?.delete(key)
       NODE_TO_ELEMENT.delete(text)
     }
   })
 
+  const contentKey = IS_ANDROID ? useContentKey(text) : undefined
+
   return (
-    <span data-slate-node="text" ref={ref}>
+    <span data-slate-node="text" ref={ref} key={contentKey}>
       {children}
     </span>
   )

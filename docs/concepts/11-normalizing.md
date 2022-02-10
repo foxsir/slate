@@ -8,10 +8,10 @@ Slate editors can edit complex, nested data structures. And for the most part th
 
 Slate editors come with a few built-in constraints out of the box. These constraints are there to make working with content _much_ more predictable than standard `contenteditable`. All of the built-in logic in Slate depends on these constraints, so unfortunately you cannot omit them. They are...
 
-1. **All `Element` nodes must contain at least one `Text` descendant.** If an element node does not contain any children, an empty text node will be added as its only child. This constraint exists to ensure that the selection's anchor and focus points \(which rely on referencing text nodes\) can always be placed inside any node. With this, empty elements \(or void elements\) wouldn't be selectable.
+1. **All `Element` nodes must contain at least one `Text` descendant** &mdash; even [Void Elements](./02-nodes.md#voids). If an element node does not contain any children, an empty text node will be added as its only child. This constraint exists to ensure that the selection's anchor and focus points \(which rely on referencing text nodes\) can always be placed inside any node. With this, empty elements \(or void elements\) wouldn't be selectable.
 2. **Two adjacent texts with the same custom properties will be merged.** If two adjacent text nodes have the same formatting, they're merged into a single text node with a combined text string of the two. This exists to prevent the text nodes from only ever expanding in count in the document, since both adding and removing formatting results in splitting text nodes.
 3. **Block nodes can only contain other blocks, or inline and text nodes.** For example, a `paragraph` block cannot have another `paragraph` block element _and_ a `link` inline element as children at the same time. The type of children allowed is determined by the first child, and any other non-conforming children are removed. This ensures that common richtext behaviors like "splitting a block in two" function consistently.
-4. **Inline nodes cannot be the first or last child of a parent block, nor can it be next to another inline node in the children array.** If this is the case, an empty text node will be added to correct this to be in complience with the constraint.
+4. **Inline nodes cannot be the first or last child of a parent block, nor can it be next to another inline node in the children array.** If this is the case, an empty text node will be added to correct this to be in compliance with the constraint.
 5. **The top-level editor node can only contain block nodes.** If any of the top-level children are inline or text nodes they will be removed. This ensures that there are always block nodes in the editor so that behaviors like "splitting a block in two" work as expected.
 
 These default constraints are all mandated because they make working with Slate documents _much_ more predictable.
@@ -114,9 +114,17 @@ And now when `normalizeNode` runs, no changes are made, so the document is valid
 
 > 🤖 For the most part you don't need to think about these internals. You can just know that anytime `normalizeNode` is called and you spot an invalid state, you can fix that single invalid state and trust that `normalizeNode` will be called again until the node becomes valid.
 
+## Empty Children Early Constraint Execution
+
+One special normalization executes before all other normalizations and this can be important to keep in mind when writing your normalizers.
+
+Before any of the other normalizations can execute, Slate iterates through all `Element` nodes and makes sure they have at least one child. If it does not, an empty `Text` descendant is created.
+
+This can trip you up when you have custom handling when an `Element` has no children. For example, if a table element has no rows, you may wish to remove the table; however, this will never happen because a `Text` node would automatically be created before that normalization could run.
+
 ## Incorrect Fixes
 
-The one pitfall to avoid however is creating an infinite normalization loop. This can happen if you check for a specific invalid structure, but then **don't** actually fix that structure with the change you make to the node. This results in an infinite loop because the node continues to be flagged as invalid, but it is never fixed properly.
+One pitfall to avoid is creating an infinite normalization loop. This can happen if you check for a specific invalid structure, but then **don't** actually fix that structure with the change you make to the node. This results in an infinite loop because the node continues to be flagged as invalid, but it is never fixed properly.
 
 For example, consider a normalization that ensured `link` elements have a valid `url` property:
 
@@ -148,3 +156,37 @@ const withLinks = editor => {
 This fix is incorrectly written. It wants to ensure that all `link` elements have a `url` property string. But to fix invalid links it sets the `url` to `null`, which is still not a string!
 
 In this case you'd either want to unwrap the link, removing it entirely. _Or_ expand your validation to accept an "empty" `url == null` as well.
+
+## Implications for Other Code
+
+Sequences of Transforms may need to be wrapped in [`Editor.withoutNormalizing`](../api/nodes/editor.md#editorwithoutnormalizingeditor-editor-fn---void--void) if the node tree should _not_ be normalized between Transforms.
+This is frequently the case when you `unwrapNodes` followed by `wrapNodes`.
+For example, you might write a function to change the type of a block as follows:
+
+```javascript
+const LIST_TYPES = ['numbered-list', 'bulleted-list']
+
+function changeBlockType(editor, type) {
+  Editor.withoutNormalizing(editor, () => {
+    const isActive = isBlockActive(editor, type)
+    const isList = LIST_TYPES.includes(type)
+
+    Transforms.unwrapNodes(editor, {
+      match: n =>
+        LIST_TYPES.includes(
+          !Editor.isEditor(n) && SlateElement.isElement(n) && n.type
+        ),
+      split: true,
+    })
+    const newProperties = {
+      type: isActive ? 'paragraph' : isList ? 'list-item' : type,
+    }
+    Transforms.setNodes(editor, newProperties)
+
+    if (!isActive && isList) {
+      const block = { type: type, children: [] }
+      Transforms.wrapNodes(editor, block)
+    }
+  })
+}
+```

@@ -1,7 +1,5 @@
-import React, { useMemo, useState, useCallback, useEffect } from 'react'
+import React, { useMemo, useState, useCallback, useEffect, useRef } from 'react'
 import { Editor, Node, Element, Descendant } from 'slate'
-import invariant from 'tiny-invariant'
-
 import { ReactEditor } from '../plugin/react-editor'
 import { FocusedContext } from '../hooks/use-focused'
 import { EditorContext } from '../hooks/use-slate-static'
@@ -21,34 +19,36 @@ export const Slate = (props: {
   onChange: (value: Descendant[]) => void
 }) => {
   const { editor, children, onChange, value, ...rest } = props
-  const [key, setKey] = useState(0)
-  const context: [ReactEditor] = useMemo(() => {
-    invariant(
-      Node.isNodeList(value),
-      `[Slate] value is invalid! Expected a list of elements but got: ${JSON.stringify(
-        value
-      )}`
-    )
-    invariant(
-      Editor.isEditor(editor),
-      `[Slate] editor is invalid! you passed: ${JSON.stringify(editor)}`
-    )
+  const unmountRef = useRef(false)
 
+  const [context, setContext] = React.useState<[ReactEditor]>(() => {
+    if (!Node.isNodeList(value)) {
+      throw new Error(
+        `[Slate] value is invalid! Expected a list of elements` +
+          `but got: ${JSON.stringify(value)}`
+      )
+    }
+    if (!Editor.isEditor(editor)) {
+      throw new Error(
+        `[Slate] editor is invalid! you passed:` + `${JSON.stringify(editor)}`
+      )
+    }
     editor.children = value
     Object.assign(editor, rest)
     return [editor]
-  }, [key, value, ...Object.values(rest)])
+  })
 
   const onContextChange = useCallback(() => {
     onChange(editor.children)
-    setKey(key + 1)
-  }, [key, onChange])
+    setContext([editor])
+  }, [onChange])
 
   EDITOR_TO_ON_CHANGE.set(editor, onContextChange)
 
   useEffect(() => {
     return () => {
       EDITOR_TO_ON_CHANGE.set(editor, () => {})
+      unmountRef.current = true
     }
   }, [])
 
@@ -59,15 +59,20 @@ export const Slate = (props: {
   })
 
   useIsomorphicLayoutEffect(() => {
-    const fn = () => setIsFocused(ReactEditor.isFocused(editor))
+    const fn = () => {
+      setTimeout(() => {
+        if (unmountRef.current) {
+          return
+        }
+        setIsFocused(ReactEditor.isFocused(editor))
+      }, 0)
+    }
     document.addEventListener('focus', fn, true)
-    return () => document.removeEventListener('focus', fn, true)
-  }, [])
-
-  useIsomorphicLayoutEffect(() => {
-    const fn = () => setIsFocused(ReactEditor.isFocused(editor))
     document.addEventListener('blur', fn, true)
-    return () => document.removeEventListener('blur', fn, true)
+    return () => {
+      document.removeEventListener('focus', fn, true)
+      document.removeEventListener('blur', fn, true)
+    }
   }, [])
 
   return (

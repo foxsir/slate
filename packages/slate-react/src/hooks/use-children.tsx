@@ -1,5 +1,5 @@
 import React from 'react'
-import { Editor, Range, Element, NodeEntry, Ancestor, Descendant } from 'slate'
+import { Editor, Range, Element, Ancestor, Descendant } from 'slate'
 
 import ElementComponent from '../components/element'
 import TextComponent from '../components/text'
@@ -7,7 +7,12 @@ import { ReactEditor } from '..'
 import { useSlateStatic } from './use-slate-static'
 import { useDecorate } from './use-decorate'
 import { NODE_TO_INDEX, NODE_TO_PARENT } from '../utils/weak-maps'
-import { RenderElementProps, RenderLeafProps } from '../components/editable'
+import {
+  RenderElementProps,
+  RenderLeafProps,
+  RenderPlaceholderProps,
+} from '../components/editable'
+import { SelectedContext } from './use-selected'
 
 /**
  * Children.
@@ -17,10 +22,18 @@ const useChildren = (props: {
   decorations: Range[]
   node: Ancestor
   renderElement?: (props: RenderElementProps) => JSX.Element
+  renderPlaceholder: (props: RenderPlaceholderProps) => JSX.Element
   renderLeaf?: (props: RenderLeafProps) => JSX.Element
   selection: Range | null
 }) => {
-  const { decorations, node, renderElement, renderLeaf, selection } = props
+  const {
+    decorations,
+    node,
+    renderElement,
+    renderPlaceholder,
+    renderLeaf,
+    selection,
+  } = props
   const decorate = useDecorate()
   const editor = useSlateStatic()
   const path = ReactEditor.findPath(editor, node)
@@ -48,14 +61,17 @@ const useChildren = (props: {
 
     if (Element.isElement(n)) {
       children.push(
-        <ElementComponent
-          decorations={ds}
-          element={n}
-          key={key.id}
-          renderElement={renderElement}
-          renderLeaf={renderLeaf}
-          selection={sel}
-        />
+        <SelectedContext.Provider key={`provider-${key.id}`} value={!!sel}>
+          <ElementComponent
+            decorations={ds}
+            element={n}
+            key={key.id}
+            renderElement={renderElement}
+            renderPlaceholder={renderPlaceholder}
+            renderLeaf={renderLeaf}
+            selection={sel}
+          />
+        </SelectedContext.Provider>
       )
     } else {
       children.push(
@@ -64,6 +80,7 @@ const useChildren = (props: {
           key={key.id}
           isLast={isLeafBlock && i === node.children.length - 1}
           parent={node}
+          renderPlaceholder={renderPlaceholder}
           renderLeaf={renderLeaf}
           text={n}
         />

@@ -1,8 +1,7 @@
-import isPlainObject from 'is-plain-object'
-import isEqual from 'lodash/isEqual'
-import omit from 'lodash/omit'
+import { isPlainObject } from 'is-plain-object'
 import { Range } from '..'
 import { ExtendedType } from './custom-types'
+import { isDeepEqual } from '../utils/deep-equal'
 
 /**
  * `Text` objects represent the nodes that contain the actual text content of a
@@ -28,8 +27,10 @@ export interface TextInterface {
 export const Text: TextInterface = {
   /**
    * Check if two text nodes are equal.
+   *
+   * When loose is set, the text is not compared. This is
+   * used to check whether sibling text nodes can be merged.
    */
-
   equals(
     text: Text,
     another: Text,
@@ -37,9 +38,15 @@ export const Text: TextInterface = {
   ): boolean {
     const { loose = false } = options
 
-    return isEqual(
-      loose ? omit(text, 'text') : text,
-      loose ? omit(another, 'text') : another
+    function omitText(obj: Record<any, any>) {
+      const { text, ...rest } = obj
+
+      return rest
+    }
+
+    return isDeepEqual(
+      loose ? omitText(text) : text,
+      loose ? omitText(another) : another
     )
   },
 

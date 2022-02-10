@@ -1,5 +1,5 @@
 import React, { useState, PropsWithChildren, Ref } from 'react'
-import { cx, css } from 'emotion'
+import { cx, css } from '@emotion/css'
 import Head from 'next/head'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
@@ -8,13 +8,14 @@ import ErrorBoundary from 'react-error-boundary'
 import { Icon } from '../../components'
 
 import CheckLists from '../../examples/check-lists'
+import CodeHighlighting from '../../examples/code-highlighting'
 import EditableVoids from '../../examples/editable-voids'
 import Embeds from '../../examples/embeds'
 import ForcedLayout from '../../examples/forced-layout'
 import HoveringToolbar from '../../examples/hovering-toolbar'
 import HugeDocument from '../../examples/huge-document'
 import Images from '../../examples/images'
-import Links from '../../examples/links'
+import Inlines from '../../examples/inlines'
 import MarkdownPreview from '../../examples/markdown-preview'
 import MarkdownShortcuts from '../../examples/markdown-shortcuts'
 import Mentions from '../../examples/mentions'
@@ -26,6 +27,7 @@ import SearchHighlighting from '../../examples/search-highlighting'
 import ShadowDOM from '../../examples/shadow-dom'
 import Tables from '../../examples/tables'
 import IFrames from '../../examples/iframe'
+import CustomPlaceholder from '../../examples/custom-placeholder'
 
 // node
 import { getAllExamples } from '../api'
@@ -34,11 +36,12 @@ const EXAMPLES = [
   ['Checklists', CheckLists, 'check-lists'],
   ['Editable Voids', EditableVoids, 'editable-voids'],
   ['Embeds', Embeds, 'embeds'],
+  ['Code Highlighting', CodeHighlighting, 'code-highlighting'],
   ['Forced Layout', ForcedLayout, 'forced-layout'],
   ['Hovering Toolbar', HoveringToolbar, 'hovering-toolbar'],
   ['Huge Document', HugeDocument, 'huge-document'],
   ['Images', Images, 'images'],
-  ['Links', Links, 'links'],
+  ['Inlines', Inlines, 'inlines'],
   ['Markdown Preview', MarkdownPreview, 'markdown-preview'],
   ['Markdown Shortcuts', MarkdownShortcuts, 'markdown-shortcuts'],
   ['Mentions', Mentions, 'mentions'],
@@ -50,6 +53,7 @@ const EXAMPLES = [
   ['Shadow DOM', ShadowDOM, 'shadow-dom'],
   ['Tables', Tables, 'tables'],
   ['Rendering in iframes', IFrames, 'iframe'],
+  ['Custom placeholder', CustomPlaceholder, 'custom-placeholder'],
 ]
 
 const Header = props => (

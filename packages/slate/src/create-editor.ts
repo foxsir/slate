@@ -13,7 +13,7 @@ import {
   Text,
   Transforms,
 } from './'
-import { DIRTY_PATHS, FLUSHING } from './utils/weak-maps'
+import { DIRTY_PATHS, DIRTY_PATH_KEYS, FLUSHING } from './utils/weak-maps'
 
 /**
  * Create a new Slate `Editor` object.
@@ -42,33 +42,41 @@ export const createEditor = (): Editor => {
         RangeRef.transform(ref, op)
       }
 
-      const set = new Set()
-      const dirtyPaths: Path[] = []
+      const oldDirtyPaths = DIRTY_PATHS.get(editor) || []
+      const oldDirtyPathKeys = DIRTY_PATH_KEYS.get(editor) || new Set()
+      let dirtyPaths: Path[]
+      let dirtyPathKeys: Set<string>
 
       const add = (path: Path | null) => {
         if (path) {
           const key = path.join(',')
 
-          if (!set.has(key)) {
-            set.add(key)
+          if (!dirtyPathKeys.has(key)) {
+            dirtyPathKeys.add(key)
             dirtyPaths.push(path)
           }
         }
       }
 
-      const oldDirtyPaths = DIRTY_PATHS.get(editor) || []
-      const newDirtyPaths = getDirtyPaths(op)
-
-      for (const path of oldDirtyPaths) {
-        const newPath = Path.transform(path, op)
-        add(newPath)
+      if (Path.operationCanTransformPath(op)) {
+        dirtyPaths = []
+        dirtyPathKeys = new Set()
+        for (const path of oldDirtyPaths) {
+          const newPath = Path.transform(path, op)
+          add(newPath)
+        }
+      } else {
+        dirtyPaths = oldDirtyPaths
+        dirtyPathKeys = oldDirtyPathKeys
       }
 
+      const newDirtyPaths = getDirtyPaths(op)
       for (const path of newDirtyPaths) {
         add(path)
       }
 
       DIRTY_PATHS.set(editor, dirtyPaths)
+      DIRTY_PATH_KEYS.set(editor, dirtyPathKeys)
       Transforms.transform(editor, op)
       editor.operations.push(op)
       Editor.normalize(editor)
@@ -106,7 +114,9 @@ export const createEditor = (): Editor => {
           }
 
           editor.marks = marks
-          editor.onChange()
+          if (!FLUSHING.get(editor)) {
+            editor.onChange()
+          }
         }
       }
     },
@@ -160,27 +170,6 @@ export const createEditor = (): Editor => {
       const { selection, marks } = editor
 
       if (selection) {
-        // If the cursor is at the end of an inline, move it outside of
-        // the inline before inserting
-        if (Range.isCollapsed(selection)) {
-          const inline = Editor.above(editor, {
-            match: n => Editor.isInline(editor, n),
-            mode: 'highest',
-          })
-
-          if (inline) {
-            const [, inlinePath] = inline
-
-            if (Editor.isEnd(editor, selection.anchor, inlinePath)) {
-              const point = Editor.after(editor, inlinePath)!
-              Transforms.setSelection(editor, {
-                anchor: point,
-                focus: point,
-              })
-            }
-          }
-        }
-
         if (marks) {
           const node = { text, ...marks }
           Transforms.insertNodes(editor, node)
@@ -271,7 +260,7 @@ export const createEditor = (): Editor => {
                 voids: true,
               })
               n--
-            } else if (isLast && child.text === '') {
+            } else if (child.text === '') {
               Transforms.removeNodes(editor, {
                 at: path.concat(n),
                 voids: true,
@@ -296,7 +285,9 @@ export const createEditor = (): Editor => {
           const marks = { ...(Editor.marks(editor) || {}) }
           delete marks[key]
           editor.marks = marks
-          editor.onChange()
+          if (!FLUSHING.get(editor)) {
+            editor.onChange()
+          }
         }
       }
     },

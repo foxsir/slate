@@ -1,5 +1,31 @@
 # slate-hyperscript
 
+## 0.67.0
+
+### Patch Changes
+
+- [#4555](https://github.com/ianstormtaylor/slate/pull/4555) [`c29eea02`](https://github.com/ianstormtaylor/slate/commit/c29eea022ec943f0c63278e9058fe1267f7dff01) Thanks [@bryanph](https://github.com/bryanph)! - createEditor is now exported from slate-hyperscript, making it easier to set up custom editor tests
+
+  For example:
+
+  ```
+  const jsx = createHyperscript({
+    creators: {
+      editor: createEditor(aFunctionThatReturnsAnEditorObject)
+    },
+    elements: {
+      block: { type: 'block' },
+      inline: { type: 'inline' }
+    }
+  })
+  ```
+
+## 0.66.0
+
+### Patch Changes
+
+- [#4500](https://github.com/ianstormtaylor/slate/pull/4500) [`50bb3d7e`](https://github.com/ianstormtaylor/slate/commit/50bb3d7e32d640957018831526235ca656963f1d) Thanks [@tubbo](https://github.com/tubbo)! - Upgrade `is-plain-object` to v5.0.0
+
 ## 0.62.0
 
 ### Minor Changes

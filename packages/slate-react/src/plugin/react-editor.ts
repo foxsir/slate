@@ -6,11 +6,11 @@ import {
   ELEMENT_TO_NODE,
   IS_FOCUSED,
   IS_READ_ONLY,
-  KEY_TO_ELEMENT,
   NODE_TO_INDEX,
   NODE_TO_KEY,
   NODE_TO_PARENT,
   EDITOR_TO_WINDOW,
+  EDITOR_TO_KEY_TO_ELEMENT,
 } from '../utils/weak-maps'
 import {
   DOMElement,
@@ -24,7 +24,7 @@ import {
   normalizeDOMPoint,
   hasShadowRoot,
 } from '../utils/dom'
-import { IS_CHROME } from '../utils/environment'
+import { IS_CHROME, IS_FIREFOX } from '../utils/environment'
 
 /**
  * A React and DOM-specific version of the `Editor` interface.
@@ -32,7 +32,12 @@ import { IS_CHROME } from '../utils/environment'
 
 export interface ReactEditor extends BaseEditor {
   insertData: (data: DataTransfer) => void
-  setFragmentData: (data: DataTransfer) => void
+  insertFragmentData: (data: DataTransfer) => boolean
+  insertTextData: (data: DataTransfer) => boolean
+  setFragmentData: (
+    data: DataTransfer,
+    originEvent?: 'drag' | 'copy' | 'cut'
+  ) => void
   hasRange: (editor: ReactEditor, range: Range) => boolean
 }
 
@@ -106,19 +111,14 @@ export const ReactEditor = {
     const el = ReactEditor.toDOMNode(editor, editor)
     const root = el.getRootNode()
 
-    if (!(root instanceof Document || root instanceof ShadowRoot))
-      throw new Error(
-        `Unable to find DocumentOrShadowRoot for editor element: ${el}`
-      )
+    if (
+      (root instanceof Document || root instanceof ShadowRoot) &&
+      root.getSelection != null
+    ) {
+      return root
+    }
 
-    // COMPAT: Only Chrome implements the DocumentOrShadowRoot mixin for
-    // ShadowRoot; other browsers still implement it on the Document
-    // interface. (2020/08/08)
-    // https://developer.mozilla.org/en-US/docs/Web/API/ShadowRoot#Properties
-    if (root.getSelection === undefined && el.ownerDocument !== null)
-      return el.ownerDocument
-
-    return root
+    return el.ownerDocument
   },
 
   /**
@@ -219,9 +219,12 @@ export const ReactEditor = {
 
     return (
       targetEl.closest(`[data-slate-editor]`) === editorEl &&
-      (!editable ||
-        targetEl.isContentEditable ||
-        !!targetEl.getAttribute('data-slate-zero-width'))
+      (!editable || targetEl.isContentEditable
+        ? true
+        : (typeof targetEl.isContentEditable === 'boolean' && // isContentEditable exists only on HTMLElement, and on other nodes it will be undefined
+            // this is the core logic that lets you know you got the right editor.selection instead of null when editor is contenteditable="false"(readOnly)
+            targetEl.closest('[contenteditable="false"]') === editorEl) ||
+          !!targetEl.getAttribute('data-slate-zero-width'))
     )
   },
 
@@ -234,11 +237,31 @@ export const ReactEditor = {
   },
 
   /**
+   * Insert fragment data from a `DataTransfer` into the editor.
+   */
+
+  insertFragmentData(editor: ReactEditor, data: DataTransfer): boolean {
+    return editor.insertFragmentData(data)
+  },
+
+  /**
+   * Insert text data from a `DataTransfer` into the editor.
+   */
+
+  insertTextData(editor: ReactEditor, data: DataTransfer): boolean {
+    return editor.insertTextData(data)
+  },
+
+  /**
    * Sets data from the currently selected fragment on a `DataTransfer`.
    */
 
-  setFragmentData(editor: ReactEditor, data: DataTransfer): void {
-    editor.setFragmentData(data)
+  setFragmentData(
+    editor: ReactEditor,
+    data: DataTransfer,
+    originEvent?: 'drag' | 'copy' | 'cut'
+  ): void {
+    editor.setFragmentData(data, originEvent)
   },
 
   /**
@@ -246,9 +269,10 @@ export const ReactEditor = {
    */
 
   toDOMNode(editor: ReactEditor, node: Node): HTMLElement {
+    const KEY_TO_ELEMENT = EDITOR_TO_KEY_TO_ELEMENT.get(editor)
     const domNode = Editor.isEditor(node)
       ? EDITOR_TO_ELEMENT.get(editor)
-      : KEY_TO_ELEMENT.get(ReactEditor.findKey(editor, node))
+      : KEY_TO_ELEMENT?.get(ReactEditor.findKey(editor, node))
 
     if (!domNode) {
       throw new Error(
@@ -412,7 +436,7 @@ export const ReactEditor = {
 
     // Else resolve a range from the caret position where the drop occured.
     let domRange
-    const { document } = window
+    const { document } = ReactEditor.getWindow(editor)
 
     // COMPAT: In Firefox, `caretRangeFromPoint` doesn't exist. (2016/07/25)
     if (document.caretRangeFromPoint) {
@@ -434,6 +458,7 @@ export const ReactEditor = {
     // Resolve a Slate range from the DOM range.
     const range = ReactEditor.toSlateRange(editor, domRange, {
       exactMatch: false,
+      suppressThrow: false,
     })
     return range
   },
@@ -445,9 +470,13 @@ export const ReactEditor = {
   toSlatePoint<T extends boolean>(
     editor: ReactEditor,
     domPoint: DOMPoint,
-    extractMatch: T
+    options: {
+      exactMatch: T
+      suppressThrow: T
+    }
   ): T extends true ? Point | null : Point {
-    const [nearestNode, nearestOffset] = extractMatch
+    const { exactMatch, suppressThrow } = options
+    const [nearestNode, nearestOffset] = exactMatch
       ? domPoint
       : normalizeDOMPoint(domPoint)
     const parentNode = nearestNode.parentNode as DOMElement
@@ -462,32 +491,36 @@ export const ReactEditor = {
       // Calculate how far into the text node the `nearestNode` is, so that we
       // can determine what the offset relative to the text node is.
       if (leafNode) {
-        textNode = leafNode.closest('[data-slate-node="text"]')!
-        const window = ReactEditor.getWindow(editor)
-        const range = window.document.createRange()
-        range.setStart(textNode, 0)
-        range.setEnd(nearestNode, nearestOffset)
-        const contents = range.cloneContents()
-        const removals = [
-          ...Array.prototype.slice.call(
-            contents.querySelectorAll('[data-slate-zero-width]')
-          ),
-          ...Array.prototype.slice.call(
-            contents.querySelectorAll('[contenteditable=false]')
-          ),
-        ]
+        textNode = leafNode.closest('[data-slate-node="text"]')
 
-        removals.forEach(el => {
-          el!.parentNode!.removeChild(el)
-        })
+        if (textNode) {
+          const window = ReactEditor.getWindow(editor)
+          const range = window.document.createRange()
+          range.setStart(textNode, 0)
+          range.setEnd(nearestNode, nearestOffset)
 
-        // COMPAT: Edge has a bug where Range.prototype.toString() will
-        // convert \n into \r\n. The bug causes a loop when slate-react
-        // attempts to reposition its cursor to match the native position. Use
-        // textContent.length instead.
-        // https://developer.microsoft.com/en-us/microsoft-edge/platform/issues/10291116/
-        offset = contents.textContent!.length
-        domNode = textNode
+          const contents = range.cloneContents()
+          const removals = [
+            ...Array.prototype.slice.call(
+              contents.querySelectorAll('[data-slate-zero-width]')
+            ),
+            ...Array.prototype.slice.call(
+              contents.querySelectorAll('[contenteditable=false]')
+            ),
+          ]
+
+          removals.forEach(el => {
+            el!.parentNode!.removeChild(el)
+          })
+
+          // COMPAT: Edge has a bug where Range.prototype.toString() will
+          // convert \n into \r\n. The bug causes a loop when slate-react
+          // attempts to reposition its cursor to match the native position. Use
+          // textContent.length instead.
+          // https://developer.microsoft.com/en-us/microsoft-edge/platform/issues/10291116/
+          offset = contents.textContent!.length
+          domNode = textNode
+        }
       } else if (voidNode) {
         // For void nodes, the element with the offset key will be a cousin, not an
         // ancestor, so find it by going down from the nearest void parent.
@@ -506,22 +539,26 @@ export const ReactEditor = {
         }
       }
 
-      // COMPAT: If the parent node is a Slate zero-width space, editor is
-      // because the text node should have no characters. However, during IME
-      // composition the ASCII characters will be prepended to the zero-width
-      // space, so subtract 1 from the offset to account for the zero-width
-      // space character.
       if (
         domNode &&
         offset === domNode.textContent!.length &&
-        parentNode.hasAttribute('data-slate-zero-width')
+        // COMPAT: If the parent node is a Slate zero-width space, editor is
+        // because the text node should have no characters. However, during IME
+        // composition the ASCII characters will be prepended to the zero-width
+        // space, so subtract 1 from the offset to account for the zero-width
+        // space character.
+        (parentNode.hasAttribute('data-slate-zero-width') ||
+          // COMPAT: In Firefox, `range.cloneContents()` returns an extra trailing '\n'
+          // when the document ends with a new-line character. This results in the offset
+          // length being off by one, so we need to subtract one to account for this.
+          (IS_FIREFOX && domNode.textContent?.endsWith('\n\n')))
       ) {
         offset--
       }
     }
 
     if (!textNode) {
-      if (extractMatch) {
+      if (suppressThrow) {
         return null as T extends true ? Point | null : Point
       }
       throw new Error(
@@ -546,9 +583,10 @@ export const ReactEditor = {
     domRange: DOMRange | DOMStaticRange | DOMSelection,
     options: {
       exactMatch: T
+      suppressThrow: T
     }
   ): T extends true ? Range | null : Range {
-    const { exactMatch } = options
+    const { exactMatch, suppressThrow } = options
     const el = isDOMSelection(domRange)
       ? domRange.anchorNode
       : domRange.startContainer
@@ -598,7 +636,7 @@ export const ReactEditor = {
     const anchor = ReactEditor.toSlatePoint(
       editor,
       [anchorNode, anchorOffset],
-      exactMatch
+      { exactMatch, suppressThrow }
     )
     if (!anchor) {
       return null as T extends true ? Range | null : Range
@@ -606,14 +644,29 @@ export const ReactEditor = {
 
     const focus = isCollapsed
       ? anchor
-      : ReactEditor.toSlatePoint(editor, [focusNode, focusOffset], exactMatch)
+      : ReactEditor.toSlatePoint(editor, [focusNode, focusOffset], {
+          exactMatch,
+          suppressThrow,
+        })
     if (!focus) {
       return null as T extends true ? Range | null : Range
     }
 
-    return ({ anchor, focus } as unknown) as T extends true
-      ? Range | null
-      : Range
+    let range: Range = { anchor: anchor as Point, focus: focus as Point }
+    // if the selection is a hanging range that ends in a void
+    // and the DOM focus is an Element
+    // (meaning that the selection ends before the element)
+    // unhang the range to avoid mistakenly including the void
+    if (
+      Range.isExpanded(range) &&
+      Range.isForward(range) &&
+      isDOMElement(focusNode) &&
+      Editor.void(editor, { at: range.focus, mode: 'highest' })
+    ) {
+      range = Editor.unhangRange(editor, range, { voids: true })
+    }
+
+    return (range as unknown) as T extends true ? Range | null : Range
   },
 
   hasRange(editor: ReactEditor, range: Range): boolean {

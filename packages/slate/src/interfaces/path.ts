@@ -34,6 +34,7 @@ export interface PathInterface {
     }
   ) => Path[]
   next: (path: Path) => Path
+  operationCanTransformPath: (operation: Operation) => boolean
   parent: (path: Path) => Path
   previous: (path: Path) => Path
   relative: (path: Path, ancestor: Path) => Path
@@ -292,6 +293,26 @@ export const Path: PathInterface = {
   },
 
   /**
+   * Returns whether this operation can affect paths or not. Used as an
+   * optimization when updating dirty paths during normalization
+   *
+   * NOTE: This *must* be kept in sync with the implementation of 'transform'
+   * below
+   */
+  operationCanTransformPath(operation: Operation): boolean {
+    switch (operation.type) {
+      case 'insert_node':
+      case 'remove_node':
+      case 'merge_node':
+      case 'split_node':
+      case 'move_node':
+        return true
+      default:
+        return false
+    }
+  },
+
+  /**
    * Given a path, return a new path referring to the parent node above it.
    */
 
@@ -344,7 +365,7 @@ export const Path: PathInterface = {
    */
 
   transform(
-    path: Path,
+    path: Path | null,
     operation: Operation,
     options: { affinity?: 'forward' | 'backward' | null } = {}
   ): Path | null {
@@ -352,8 +373,12 @@ export const Path: PathInterface = {
       const { affinity = 'forward' } = options
 
       // PERF: Exit early if the operation is guaranteed not to have an effect.
-      if (path.length === 0) {
+      if (!path || path?.length === 0) {
         return
+      }
+
+      if (p === null) {
+        return null
       }
 
       switch (operation.type) {

@@ -16,7 +16,7 @@ import {
   Descendant,
   Element as SlateElement,
 } from 'slate'
-import { css } from 'emotion'
+import { css } from '@emotion/css'
 import { withHistory } from 'slate-history'
 
 const initialValue: Descendant[] = [
@@ -176,7 +176,7 @@ const CheckListItemElement = ({ attributes, children, element }) => {
         className={css`
           flex: 1;
           opacity: ${checked ? 0.666 : 1};
-          text-decoration: ${checked ? 'none' : 'line-through'};
+          text-decoration: ${!checked ? 'none' : 'line-through'};
 
           &:focus {
             outline: none;

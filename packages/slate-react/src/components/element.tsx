@@ -1,21 +1,26 @@
-import React, { useRef } from 'react'
+import React, { Fragment, useRef } from 'react'
 import getDirection from 'direction'
-import { Editor, Node, Range, NodeEntry, Element as SlateElement } from 'slate'
+import { Editor, Node, Range, Element as SlateElement } from 'slate'
 
 import Text from './text'
 import useChildren from '../hooks/use-children'
 import { ReactEditor, useSlateStatic, useReadOnly } from '..'
-import { SelectedContext } from '../hooks/use-selected'
 import { useIsomorphicLayoutEffect } from '../hooks/use-isomorphic-layout-effect'
 import {
   NODE_TO_ELEMENT,
   ELEMENT_TO_NODE,
   NODE_TO_PARENT,
   NODE_TO_INDEX,
-  KEY_TO_ELEMENT,
+  EDITOR_TO_KEY_TO_ELEMENT,
 } from '../utils/weak-maps'
 import { isDecoratorRangeListEqual } from '../utils/range-list'
-import { RenderElementProps, RenderLeafProps } from './editable'
+import {
+  RenderElementProps,
+  RenderLeafProps,
+  RenderPlaceholderProps,
+} from './editable'
+import { useContentKey } from '../hooks/use-content-key'
+import { IS_ANDROID } from '../utils/environment'
 
 /**
  * Element.
@@ -25,6 +30,7 @@ const Element = (props: {
   decorations: Range[]
   element: SlateElement
   renderElement?: (props: RenderElementProps) => JSX.Element
+  renderPlaceholder: (props: RenderPlaceholderProps) => JSX.Element
   renderLeaf?: (props: RenderLeafProps) => JSX.Element
   selection: Range | null
 }) => {
@@ -32,6 +38,7 @@ const Element = (props: {
     decorations,
     element,
     renderElement = (p: RenderElementProps) => <DefaultElement {...p} />,
+    renderPlaceholder,
     renderLeaf,
     selection,
   } = props
@@ -44,6 +51,7 @@ const Element = (props: {
     decorations,
     node: element,
     renderElement,
+    renderPlaceholder,
     renderLeaf,
     selection,
   })
@@ -98,7 +106,13 @@ const Element = (props: {
           position: 'absolute',
         }}
       >
-        <Text decorations={[]} isLast={false} parent={element} text={text} />
+        <Text
+          renderPlaceholder={renderPlaceholder}
+          decorations={[]}
+          isLast={false}
+          parent={element}
+          text={text}
+        />
       </Tag>
     )
 
@@ -108,21 +122,25 @@ const Element = (props: {
 
   // Update element-related weak maps with the DOM element ref.
   useIsomorphicLayoutEffect(() => {
+    const KEY_TO_ELEMENT = EDITOR_TO_KEY_TO_ELEMENT.get(editor)
     if (ref.current) {
-      KEY_TO_ELEMENT.set(key, ref.current)
+      KEY_TO_ELEMENT?.set(key, ref.current)
       NODE_TO_ELEMENT.set(element, ref.current)
       ELEMENT_TO_NODE.set(ref.current, element)
     } else {
-      KEY_TO_ELEMENT.delete(key)
+      KEY_TO_ELEMENT?.delete(key)
       NODE_TO_ELEMENT.delete(element)
     }
   })
 
-  return (
-    <SelectedContext.Provider value={!!selection}>
-      {renderElement({ attributes, children, element })}
-    </SelectedContext.Provider>
-  )
+  const content = renderElement({ attributes, children, element })
+
+  if (IS_ANDROID) {
+    const contentKey = useContentKey(element)
+    return <Fragment key={contentKey}>{content}</Fragment>
+  }
+
+  return content
 }
 
 const MemoizedElement = React.memo(Element, (prev, next) => {
