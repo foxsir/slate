@@ -8,11 +8,13 @@ Slate editors can edit complex, nested data structures. And for the most part th
 
 Slate editors come with a few built-in constraints out of the box. These constraints are there to make working with content _much_ more predictable than standard `contenteditable`. All of the built-in logic in Slate depends on these constraints, so unfortunately you cannot omit them. They are...
 
-1. **All `Element` nodes must contain at least one `Text` descendant** &mdash; even [Void Elements](./02-nodes.md#voids). If an element node does not contain any children, an empty text node will be added as its only child. This constraint exists to ensure that the selection's anchor and focus points \(which rely on referencing text nodes\) can always be placed inside any node. With this, empty elements \(or void elements\) wouldn't be selectable.
+1. **All `Element` nodes must contain at least one `Text` descendant** &mdash; even [Void Elements](./02-nodes.md#voids). If an element node does not contain any children, an empty text node will be added as its only child. This constraint exists to ensure that the selection's anchor and focus points \(which rely on referencing text nodes\) can always be placed inside any node. Without this, empty elements \(or void elements\) wouldn't be selectable.
 2. **Two adjacent texts with the same custom properties will be merged.** If two adjacent text nodes have the same formatting, they're merged into a single text node with a combined text string of the two. This exists to prevent the text nodes from only ever expanding in count in the document, since both adding and removing formatting results in splitting text nodes.
 3. **Block nodes can only contain other blocks, or inline and text nodes.** For example, a `paragraph` block cannot have another `paragraph` block element _and_ a `link` inline element as children at the same time. The type of children allowed is determined by the first child, and any other non-conforming children are removed. This ensures that common richtext behaviors like "splitting a block in two" function consistently.
 4. **Inline nodes cannot be the first or last child of a parent block, nor can it be next to another inline node in the children array.** If this is the case, an empty text node will be added to correct this to be in compliance with the constraint.
 5. **The top-level editor node can only contain block nodes.** If any of the top-level children are inline or text nodes they will be removed. This ensures that there are always block nodes in the editor so that behaviors like "splitting a block in two" work as expected.
+6. **Nodes must be JSON-serializable.** For example, avoid using `undefined` in your data model. This ensures that [operations](./05-operations.md) are also JSON-serializable, a property which is assumed by collaboration libraries.
+7. **Property values must not be `null`.** Instead, you should use an optional property, e.g. `foo?: string` instead of `foo: string | null`. This limitation is due to `null` being used in [operations](./05-operations.md) to represent the absence of a property.
 
 These default constraints are all mandated because they make working with Slate documents _much_ more predictable.
 
@@ -74,7 +76,7 @@ You might at first think this is odd, because with the `return` there, the origi
 
 But, there's a slight "trick" to normalizing.
 
-When you do call `Editor.unwrapNodes`, you're actually changing the content of the node that is currently being normalized. So even though you're ending the current normalization pass, by making a change to the node you're kicking off a _new_ normalization pass. This results in a sort of _recursive_ normalizing.
+When you do call `Transforms.unwrapNodes`, you're actually changing the content of the node that is currently being normalized. So even though you're ending the current normalization pass, by making a change to the node you're kicking off a _new_ normalization pass. This results in a sort of _recursive_ normalizing.
 
 This multi-pass characteristic makes it _much_ easier to write normalizations, because you only ever have to worry about fixing a single issue at once, and not fixing _every_ possible issue that could be putting a node in an invalid state.
 

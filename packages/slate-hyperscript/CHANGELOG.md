@@ -1,5 +1,23 @@
 # slate-hyperscript
 
+## 0.100.0
+
+### Minor Changes
+
+- [#5528](https://github.com/ianstormtaylor/slate/pull/5528) [`c4c14882`](https://github.com/ianstormtaylor/slate/commit/c4c14882edf13828f6583a88e50754ce63583bd7) Thanks [@dylans](https://github.com/dylans)! - Update dependencies to React 18, Node 20, TS 5.2, etc.
+
+## 0.81.3
+
+### Patch Changes
+
+- [#5042](https://github.com/ianstormtaylor/slate/pull/5042) [`11a93e65`](https://github.com/ianstormtaylor/slate/commit/11a93e65de4b197a43777e575caf13d7a05d5dc9) Thanks [@bryanph](https://github.com/bryanph)! - Upgrade next.js and source-map-loader packages
+
+## 0.77.0
+
+### Patch Changes
+
+- [#4932](https://github.com/ianstormtaylor/slate/pull/4932) [`1ff6e690`](https://github.com/ianstormtaylor/slate/commit/1ff6e6909353a2e8088dcc8c2bacad15381652a4) Thanks [@e1himself](https://github.com/e1himself)! - Export `createText` creator from `slate-hyperscript` package
+
 ## 0.67.0
 
 ### Patch Changes
